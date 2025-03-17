@@ -1,0 +1,13 @@
+name: kite-dev
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: kite
+      POSTGRES_PASSWORD: kite
+      POSTGRES_DB: kite
+
+volumes:
+  kite-postgres-data:

@@ -1,0 +1,37 @@
+FROM node:lts-alpine AS build
+
+# Define build arguments
+ARG VITE_BACKEND_URL
+
+WORKDIR /app
+
+COPY apps/frontend/package.json ./apps/frontend/
+COPY package.json yarn.lock ./
+
+# Install packages
+RUN yarn install --frozen-lockfile
+
+# Copy local code to the container image.
+COPY apps/frontend/ ./apps/frontend/
+
+# Build the app with environment variables
+RUN VITE_BACKEND_URL=${VITE_BACKEND_URL} \
+    yarn build:frontend
+
+# Use the Caddy image
+FROM caddy
+
+# Create and change to the app directory.
+WORKDIR /app
+
+# Copy Caddyfile to the container image.
+COPY Caddyfile ./
+
+# Copy local code to the container image.
+RUN caddy fmt Caddyfile --overwrite
+
+# Copy files to the container image.
+COPY --from=build /app/apps/frontend/dist ./apps/frontend/dist
+
+# Use Caddy to run/serve the app
+CMD ["caddy", "run", "--config", "Caddyfile", "--adapter", "caddyfile"]

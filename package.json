@@ -1,0 +1,38 @@
+{
+  "name": "kite",
+  "description": "Kubernetes Isolated Tenant Environments - ",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev:frontend": "yarn workspace @kite/frontend dev",
+    "dev:backend": "yarn workspace @kite/backend dev",
+    "build:frontend": "yarn workspace @kite/frontend build",
+    "build:backend": "yarn workspace @kite/backend build",
+    "start:backend:prod": "yarn workspace @kite/backend start:prod",
+    "generate-api": "openapi-generator-cli generate -i http://localhost:3001/api-json -g typescript-axios -o apps/frontend/src/api",
+    "lint": "eslint ."
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@openapitools/openapi-generator-cli": "^2.17.0",
+    "eslint": "^9.9.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "2.31.0",
+    "eslint-plugin-jsx-a11y": "6.10.1",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.9",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "globals": "^15.9.0",
+    "prettier": "^3.3.3",
+    "typescript-eslint": "^8.0.1"
+  }
+}

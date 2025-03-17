@@ -1,0 +1,40 @@
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Copy package.json files
+COPY package.json yarn.lock ./
+COPY apps/backend/package.json ./apps/backend/
+
+# Install dependencies
+RUN yarn install --frozen-lockfile && \
+    yarn cache clean
+
+# Copy source code
+COPY . .
+
+# Generate Prisma client and build the application
+RUN yarn build:backend
+
+# Production stage
+FROM node:22-alpine AS production
+
+WORKDIR /app
+
+# Set NODE_ENV to production
+ENV NODE_ENV=production
+
+# Copy package.json files
+COPY package.json yarn.lock ./
+COPY apps/backend/package.json ./apps/backend/
+
+# Install production dependencies only
+RUN yarn install --frozen-lockfile --production && \
+    yarn cache clean
+
+# Copy built application from builder stage
+COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
+COPY --from=builder /app/apps/backend/prisma ./apps/backend/prisma
+
+# Command to run the application
+CMD ["yarn", "start:backend:prod"] 
