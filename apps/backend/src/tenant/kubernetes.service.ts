@@ -1,344 +1,242 @@
 import * as k8s from "@kubernetes/client-node";
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import crypto from "crypto";
+
+import {
+  getDeployment,
+  getIngress,
+  getNamespace,
+  getService,
+  getVolumeClaim,
+} from "./tenant.resources";
 
 @Injectable()
 export class KubernetesService implements OnModuleInit {
+  private readonly logger = new Logger(KubernetesService.name);
   private kc: k8s.KubeConfig;
   private k8sApi: k8s.AppsV1Api;
   private k8sCoreApi: k8s.CoreV1Api;
   private k8sNetworkingApi: k8s.NetworkingV1Api;
 
-  constructor(private configService: ConfigService) {
-  }
+  constructor(private configService: ConfigService) {}
 
   async onModuleInit() {
     this.kc = new k8s.KubeConfig();
-    this.kc.loadFromDefault();
+
+    // In development, use minikube context
+    if (process.env.NODE_ENV === "development") {
+      this.kc.loadFromFile(
+        this.configService.get("KUBECONFIG") ||
+          `${process.env.HOME}/.kube/config`,
+      );
+      this.kc.setCurrentContext("minikube");
+    } else {
+      this.kc.loadFromDefault();
+    }
 
     this.k8sApi = this.kc.makeApiClient(k8s.AppsV1Api);
     this.k8sCoreApi = this.kc.makeApiClient(k8s.CoreV1Api);
     this.k8sNetworkingApi = this.kc.makeApiClient(k8s.NetworkingV1Api);
   }
 
-  async createTenantNamespace(tenantId: string): Promise<void> {
-    const namespace = {
-      apiVersion: "v1",
-      kind: "Namespace",
-      metadata: {
-        name: `tenant-${tenantId}`,
-        labels: {
-          "tenant-id": tenantId
-        }
-      }
-    };
+  async createNamespace(tenantId: string): Promise<void> {
+    const namespace = getNamespace(tenantId);
 
     await this.k8sCoreApi.createNamespace({
-      body: namespace
+      body: namespace,
     });
+
+    this.logger.log(`Created namespace ${namespace.metadata?.name}`);
   }
 
-  async createTenantResources(
+  async createResources(
     tenantId: string,
     config: {
+      postgresUser: string;
       postgresPassword: string;
+      postgresDatabase: string;
       minioAccessKey: string;
       minioSecretKey: string;
-    }
+    },
   ): Promise<void> {
     const namespace = `tenant-${tenantId}`;
 
-    // Create PostgreSQL deployment
-    const postgresDeployment = {
-      apiVersion: "apps/v1",
-      kind: "Deployment",
-      metadata: {
-        name: "postgres",
-        namespace
-      },
-      spec: {
-        replicas: 1,
-        selector: {
-          matchLabels: {
-            app: "postgres"
-          }
-        },
-        template: {
-          metadata: {
-            labels: {
-              app: "postgres"
-            }
-          },
-          spec: {
-            containers: [
-              {
-                name: "postgres",
-                image: "postgres:17",
-                env: [
-                  {
-                    name: "POSTGRES_PASSWORD",
-                    value: config.postgresPassword
-                  },
-                  {
-                    name: "POSTGRES_DB",
-                    value: "tenantdb"
-                  }
-                ],
-                ports: [
-                  {
-                    containerPort: 5432
-                  }
-                ],
-                volumeMounts: [
-                  {
-                    name: "postgres-storage",
-                    mountPath: "/var/lib/postgresql/data"
-                  }
-                ]
-              }
-            ],
-            volumes: [
-              {
-                name: "postgres-storage",
-                persistentVolumeClaim: {
-                  claimName: "postgres-pvc"
-                }
-              }
-            ]
-          }
-        }
-      }
-    };
+    const postgresPvc = getVolumeClaim(tenantId, "postgres");
+    const minioPvc = getVolumeClaim(tenantId, "minio");
 
-    // Create MinIO deployment
-    const minioDeployment = {
-      apiVersion: "apps/v1",
-      kind: "Deployment",
-      metadata: {
-        name: "minio",
-        namespace
-      },
-      spec: {
-        replicas: 1,
-        selector: {
-          matchLabels: {
-            app: "minio"
-          }
-        },
-        template: {
-          metadata: {
-            labels: {
-              app: "minio"
-            }
+    // Create PostgreSQL deployment
+    const postgresDeployment = getDeployment(
+      tenantId,
+      "postgres",
+      {
+        name: "postgres",
+        image: "postgres:17",
+        ports: [
+          {
+            containerPort: 5432,
+            name: "postgres",
           },
-          spec: {
-            containers: [
-              {
-                name: "minio",
-                image: "minio/minio",
-                args: ["server", "/data"],
-                env: [
-                  {
-                    name: "MINIO_ROOT_USER",
-                    value: config.minioAccessKey
-                  },
-                  {
-                    name: "MINIO_ROOT_PASSWORD",
-                    value: config.minioSecretKey
-                  }
-                ],
-                ports: [
-                  {
-                    containerPort: 9000
-                  }
-                ],
-                volumeMounts: [
-                  {
-                    name: "minio-storage",
-                    mountPath: "/data"
-                  }
-                ]
-              }
-            ],
-            volumes: [
-              {
-                name: "minio-storage",
-                persistentVolumeClaim: {
-                  claimName: "minio-pvc"
-                }
-              }
-            ]
-          }
-        }
-      }
-    };
+        ],
+        env: [
+          { name: "POSTGRES_PASSWORD", value: config.postgresPassword },
+          { name: "POSTGRES_USER", value: config.postgresUser },
+          { name: "POSTGRES_DB", value: config.postgresDatabase },
+        ],
+        volumeMounts: [
+          {
+            name: "volume",
+            mountPath: "/var/lib/postgresql/data",
+          },
+        ],
+      },
+      postgresPvc.metadata?.name,
+    );
+
+    const minioDeployment = getDeployment(
+      tenantId,
+      "minio",
+      {
+        name: "minio",
+        image: "minio/minio:latest",
+        args: ["server", "/data"],
+        env: [
+          { name: "MINIO_ROOT_USER", value: config.minioAccessKey },
+          { name: "MINIO_ROOT_PASSWORD", value: config.minioSecretKey },
+        ],
+        ports: [
+          {
+            containerPort: 9000,
+            name: "minio",
+          },
+          {
+            containerPort: 9001,
+            name: "minio-console",
+          },
+        ],
+        volumeMounts: [
+          {
+            name: "volume",
+            mountPath: "/data",
+          },
+        ],
+      },
+      minioPvc.metadata?.name,
+    );
+
+    const backendDeployment = getDeployment(tenantId, "backend", {
+      name: "backend",
+      image: "snapster-backend:latest",
+      imagePullPolicy: "Never",
+      ports: [
+        {
+          containerPort: 3001,
+          name: "backend",
+        },
+      ],
+      env: [
+        { name: "BACKEND_PORT", value: "3001" },
+        { name: "JWT_SECRET", value: "sfhaisfogphaishfa" },
+        { name: "COOKIE_DOMAIN", value: "localhost" },
+        {
+          name: "FRONTEND_URL",
+          value: `http://${tenantId}.kite.internal`,
+        },
+        { name: "SALT", value: "5" },
+        { name: "STORAGE_ENDPOINT", value: "minio" },
+        { name: "STORAGE_PORT", value: "9000" },
+        { name: "STORAGE_ACCESS_KEY", value: config.minioAccessKey },
+        { name: "STORAGE_SECRET_KEY", value: config.minioSecretKey },
+        { name: "STORAGE_DEFAULT_BUCKET", value: "default" },
+        { name: "STORAGE_USE_SSL", value: "false" },
+        { name: "UPLOAD_MAX_FILE_SIZE", value: "5248000" },
+        {
+          name: "DATABASE_URL",
+          value: `postgresql://tenant:${config.postgresPassword}@postgres:5432/tenantdb`,
+        },
+      ],
+    });
+
+    const frontendDeployment = getDeployment(tenantId, "frontend", {
+      name: "frontend",
+      image: "snapster-frontend:latest",
+      imagePullPolicy: "Never",
+      ports: [{ containerPort: 3000, name: "frontend" }],
+    });
 
     // Create services
-    const postgresService = {
-      apiVersion: "v1",
-      kind: "Service",
-      metadata: {
-        name: "postgres",
-        namespace
-      },
-      spec: {
-        selector: {
-          app: "postgres"
-        },
-        ports: [
-          {
-            port: 5432,
-            targetPort: 5432
-          }
-        ]
-      }
-    };
-
-    const minioService = {
-      apiVersion: "v1",
-      kind: "Service",
-      metadata: {
-        name: "minio",
-        namespace
-      },
-      spec: {
-        selector: {
-          app: "minio"
-        },
-        ports: [
-          {
-            port: 9000,
-            targetPort: 9000
-          }
-        ]
-      }
-    };
+    const postgresService = getService(tenantId, "postgres", 5432);
+    const minioService = getService(tenantId, "minio", 9000);
+    const backendService = getService(tenantId, "backend", 3001);
+    const frontendService = getService(tenantId, "frontend", 3000);
 
     // Create ingress
-    const ingress = {
-      apiVersion: "networking.k8s.io/v1",
-      kind: "Ingress",
-      metadata: {
-        name: "tenant-ingress",
-        namespace,
-        annotations: {
-          "nginx.ingress.kubernetes.io/rewrite-target": "/"
-        }
-      },
-      spec: {
-        rules: [
-          {
-            host: `${tenantId}.your-domain.com`,
-            http: {
-              paths: [
-                {
-                  path: "/api",
-                  pathType: "Prefix",
-                  backend: {
-                    service: {
-                      name: "backend",
-                      port: {
-                        number: 3000
-                      }
-                    }
-                  }
-                },
-                {
-                  path: "/",
-                  pathType: "Prefix",
-                  backend: {
-                    service: {
-                      name: "frontend",
-                      port: {
-                        number: 80
-                      }
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        ]
-      }
-    };
-
-    // Apply all resources
-    await Promise.all([
-      this.k8sApi.createNamespacedDeployment({
-        body: postgresDeployment,
-        namespace: namespace
-      }),
-      this.k8sApi.createNamespacedDeployment({
-        body: minioDeployment,
-        namespace: namespace
-      }),
-      this.k8sCoreApi.createNamespacedService({
-        body: postgresService,
-        namespace: namespace
-      }),
-      this.k8sCoreApi.createNamespacedService({
-        body: minioService,
-        namespace: namespace
-      }),
-      this.k8sNetworkingApi.createNamespacedIngress({
-        body: ingress,
-        namespace: namespace
-      })
+    const ingress = getIngress(tenantId, [
+      { path: "/cdn", port: 9000, serviceName: "minio" },
+      { path: "/api", port: 3001, serviceName: "backend" },
+      { path: "/", port: 3000, serviceName: "frontend" },
     ]);
+    // Create PVCs
+    const pvcs = [postgresPvc, minioPvc];
+    for (const resource of pvcs) {
+      await this.k8sCoreApi.createNamespacedPersistentVolumeClaim({
+        body: resource,
+        namespace,
+      });
+
+      this.logger.log(`Created PVC ${resource.metadata?.name}`);
+    }
+
+    // Apply all deployments
+    const deployments = [
+      postgresDeployment,
+      minioDeployment,
+      backendDeployment,
+      frontendDeployment,
+    ];
+    for (const resource of deployments) {
+      await this.k8sApi.createNamespacedDeployment({
+        body: resource,
+        namespace,
+      });
+
+      this.logger.log(`Created deployment ${resource.metadata?.name}`);
+    }
+
+    // Create services
+    const services = [
+      postgresService,
+      minioService,
+      backendService,
+      frontendService,
+    ];
+    for (const resource of services) {
+      await this.k8sCoreApi.createNamespacedService({
+        body: resource,
+        namespace,
+      });
+
+      this.logger.log(`Created service ${resource.metadata?.name}`);
+    }
+
+    await this.k8sNetworkingApi.createNamespacedIngress({
+      body: ingress,
+      namespace,
+    });
+
+    this.logger.log(`Created ingress ${ingress.metadata?.name}`);
   }
 
   async deleteTenant(tenantId: string): Promise<void> {
-    const namespace = `tenant-${tenantId}`;
+    const namespace = this.getNamespaceName(tenantId);
     await this.k8sCoreApi.deleteNamespace({
-      name: namespace
+      name: namespace,
     });
+
+    this.logger.log(`Deleted namespace ${namespace}`);
   }
 
-  async getTenantStatus(tenantId: string): Promise<{
-    status: "running" | "failed" | "deleting";
-    resources: {
-      postgres: boolean;
-      minio: boolean;
-      frontend: boolean;
-      backend: boolean;
-    };
-  }> {
-    const namespace = `tenant-${tenantId}`;
-
-    try {
-      const [postgresDeployment, minioDeployment] = await Promise.all([
-        this.k8sApi.readNamespacedDeployment({
-          name: "postgres",
-          namespace: namespace
-        }),
-        this.k8sApi.readNamespacedDeployment({
-          name: "minio",
-          namespace: namespace
-        })
-      ]);
-
-      return {
-        status: "running",
-        resources: {
-          postgres: postgresDeployment.status?.availableReplicas === 1,
-          minio: minioDeployment.status?.availableReplicas === 1,
-          frontend: true,
-          backend: true
-        }
-      };
-    } catch (error) {
-      if (error.response?.statusCode === 404) {
-        return {
-          status: "deleting",
-          resources: {
-            postgres: false,
-            minio: false,
-            frontend: false,
-            backend: false
-          }
-        };
-      }
-      throw error;
-    }
+  private getNamespaceName(tenantId: string): string {
+    return `tenant-${tenantId}`;
   }
 }

@@ -8,7 +8,7 @@ const environment = () => ({
   jwtSecret: env.get("JWT_SECRET").required().asString(),
   cookieDomain: env.get("COOKIE_DOMAIN").required().asString(),
   frontendUrl: env.get("FRONTEND_URL").required().asString(),
-  salt: env.get("SALT").required().asIntPositive()
+  salt: env.get("SALT").required().asIntPositive(),
 });
 
 export default environment;

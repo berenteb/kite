@@ -19,7 +19,7 @@ export class TenantService {
     const tenant = await this.prismaService.tenant.create({
       data: {
         name: data.name,
-        status: "provisioning",
+        status: TenantStatus.PROVISIONING,
         User: {
           connect: {
             id: userId,
@@ -28,25 +28,26 @@ export class TenantService {
       },
     });
 
-    // Generate secure credentials
+    const postgresUser = "tenant";
     const postgresPassword = crypto.randomBytes(16).toString("hex");
+    const postgresDatabase = "tenantdb";
     const minioAccessKey = crypto.randomBytes(16).toString("hex");
     const minioSecretKey = crypto.randomBytes(32).toString("hex");
 
     try {
-      // Create Kubernetes namespace and resources
-      await this.kubernetesService.createTenantNamespace(tenant.id);
-      await this.kubernetesService.createTenantResources(tenant.id, {
+      await this.kubernetesService.createNamespace(tenant.id);
+      await this.kubernetesService.createResources(tenant.id, {
         postgresPassword,
+        postgresUser,
+        postgresDatabase,
         minioAccessKey,
         minioSecretKey,
       });
 
-      // Update tenant status
       await this.prismaService.tenant.update({
         where: { id: tenant.id },
         data: {
-          status: "running",
+          status: TenantStatus.READY,
           postgresPassword,
           minioAccessKey,
           minioSecretKey,
@@ -62,13 +63,11 @@ export class TenantService {
         updatedAt: tenant.updatedAt,
       };
     } catch (error) {
-      // Update tenant status to failed
       const updatedTenant = await this.prismaService.tenant.update({
         where: { id: tenant.id },
         data: { status: TenantStatus.ERROR },
       });
 
-      // Cleanup Kubernetes resources
       await this.kubernetesService.deleteTenant(tenant.id);
 
       return {
@@ -83,13 +82,11 @@ export class TenantService {
   }
 
   async deleteTenant(userId: string, tenantId: string): Promise<void> {
-    // Update tenant status to deleting
     await this.prismaService.tenant.updateMany({
       where: { id: tenantId, User: { id: userId } },
       data: { status: TenantStatus.DELETING },
     });
 
-    // Delete Kubernetes resources
     try {
       await this.kubernetesService.deleteTenant(tenantId);
     } catch (error) {
@@ -99,7 +96,6 @@ export class TenantService {
       );
     }
 
-    // Delete tenant from database
     await this.prismaService.tenant.delete({
       where: { id: tenantId, User: { id: userId } },
     });

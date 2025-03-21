@@ -35,5 +35,6 @@ export const useTenants = () => {
   return useQuery({
     queryKey: tenantKeys.lists(),
     queryFn: getTenants,
+    refetchInterval: 5000,
   });
 };

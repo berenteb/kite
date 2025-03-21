@@ -1,0 +1,258 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-example
+  labels:
+    tenant-id: example
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: tenant-example
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: tenant-example
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: tenant-example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:17
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "tenant-password"
+        - name: POSTGRES_USER
+          value: "tenant"
+        - name: POSTGRES_DB
+          value: "tenantdb"
+        ports:
+        - containerPort: 5432
+          name: postgres
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: tenant-example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+      - name: minio
+        image: minio/minio
+        args: ["server", "/data"]
+        env:
+        - name: MINIO_ROOT_USER
+          value: "example-access-key"
+        - name: MINIO_ROOT_PASSWORD
+          value: "example-secret-key"
+        ports:
+        - containerPort: 9000
+          name: minio
+        - containerPort: 9001
+          name: minio-console
+        volumeMounts:
+        - name: minio-storage
+          mountPath: /data
+      volumes:
+      - name: minio-storage
+        persistentVolumeClaim:
+          claimName: minio-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: tenant-example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: snapster-backend:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 3001
+          name: backend
+        env:
+        - name: BACKEND_PORT
+          value: "3001"
+        - name: JWT_SECRET
+          value: "example-jwt-secret"
+        - name: COOKIE_DOMAIN
+          value: "localhost"
+        - name: FRONTEND_URL
+          value: "http://localhost:3000"
+        - name: SALT
+          value: "5"
+        - name: STORAGE_ENDPOINT
+          value: "minio"
+        - name: STORAGE_PORT
+          value: "9000"
+        - name: STORAGE_ACCESS_KEY
+          value: "example-access-key"
+        - name: STORAGE_SECRET_KEY
+          value: "example-secret-key"
+        - name: STORAGE_DEFAULT_BUCKET
+          value: "default"
+        - name: STORAGE_USE_SSL
+          value: "false"
+        - name: UPLOAD_MAX_FILE_SIZE
+          value: "5248000"
+        - name: DATABASE_URL
+          value: "postgresql://tenant:tenant-password@postgres:5432/tenantdb"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: tenant-example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: snapster-frontend:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 80
+          name: frontend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: tenant-example
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: tenant-example
+spec:
+  selector:
+    app: minio
+  ports:
+  - port: 9000
+    targetPort: 9000
+    name: minio
+  - port: 9001
+    targetPort: 9001
+    name: minio-console
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: tenant-example
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 3001
+    targetPort: 3001
+    name: backend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: tenant-example
+spec:
+  selector:
+    app: frontend
+  ports:
+  - port: 80
+    targetPort: 80
+    name: frontend
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tenant-ingress
+  namespace: tenant-example
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: example.kite.internal
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend
+            port:
+              number: 3001
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80
