@@ -1,15 +1,23 @@
 import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Tenant } from "@prisma/client";
 import * as crypto from "crypto";
 
 import { PrismaService } from "../prisma/prisma.service";
 import { KubernetesService } from "./kubernetes.service";
-import { CreateTenantDto, TenantDto, TenantStatus } from "./tenant.dto";
+import {
+  CreateTenantDto,
+  TenantDto,
+  TenantSecretDto,
+  TenantStatus,
+} from "./tenant.dto";
 
 @Injectable()
 export class TenantService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly kubernetesService: KubernetesService,
+    private readonly configService: ConfigService,
   ) {}
 
   async createTenant(
@@ -58,9 +66,10 @@ export class TenantService {
         id: tenant.id,
         name: tenant.name,
         status: TenantStatus.READY,
-        accessUrl: `https://${tenant.id}.your-domain.com`,
+        accessUrl: this.getAccessUrl(tenant.id),
         createdAt: tenant.createdAt,
         updatedAt: tenant.updatedAt,
+        secrets: this.mapSecrets(tenant),
       };
     } catch (error) {
       const updatedTenant = await this.prismaService.tenant.update({
@@ -77,6 +86,7 @@ export class TenantService {
         accessUrl: null,
         createdAt: updatedTenant.createdAt,
         updatedAt: updatedTenant.updatedAt,
+        secrets: this.mapSecrets(updatedTenant),
       };
     }
   }
@@ -108,22 +118,35 @@ export class TenantService {
           id: userId,
         },
       },
-      select: {
-        id: true,
-        name: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
 
     return tenants.map((tenant) => ({
-      ...tenant,
+      id: tenant.id,
+      name: tenant.name,
       status: tenant.status as TenantStatus,
       accessUrl:
         tenant.status === TenantStatus.READY
-          ? `https://${tenant.id}.your-domain.com`
+          ? this.getAccessUrl(tenant.id)
           : null,
+      createdAt: tenant.createdAt,
+      updatedAt: tenant.updatedAt,
+      secrets: this.mapSecrets(tenant),
+    }));
+  }
+
+  private getAccessUrl(tenantId: string): string {
+    const useTLS = this.configService.get("clusterUseTLS");
+    const domain = this.configService.get("clusterDomain");
+
+    return `${useTLS ? "https" : "http"}://${tenantId}.${domain}`;
+  }
+
+  private mapSecrets(tenant: Tenant): TenantSecretDto[] {
+    const keys = ["postgresPassword", "minioAccessKey", "minioSecretKey"];
+
+    return keys.map((key) => ({
+      key,
+      value: String(tenant[key as keyof Tenant]),
     }));
   }
 }

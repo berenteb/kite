@@ -128,6 +128,12 @@ export interface TenantDto {
      * @memberof TenantDto
      */
     'updatedAt': string;
+    /**
+     * The secrets of the tenant
+     * @type {Array<TenantSecretDto>}
+     * @memberof TenantDto
+     */
+    'secrets': Array<TenantSecretDto>;
 }
 
 export const TenantDtoStatusEnum = {
@@ -139,6 +145,25 @@ export const TenantDtoStatusEnum = {
 
 export type TenantDtoStatusEnum = typeof TenantDtoStatusEnum[keyof typeof TenantDtoStatusEnum];
 
+/**
+ * 
+ * @export
+ * @interface TenantSecretDto
+ */
+export interface TenantSecretDto {
+    /**
+     * The key of the secret
+     * @type {string}
+     * @memberof TenantSecretDto
+     */
+    'key': string;
+    /**
+     * The value of the secret
+     * @type {string}
+     * @memberof TenantSecretDto
+     */
+    'value': string;
+}
 /**
  * 
  * @export

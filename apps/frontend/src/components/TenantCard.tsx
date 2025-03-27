@@ -3,7 +3,7 @@ import { CopyIcon, ExternalLink, RotateCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { TenantDto } from "@/api";
+import { TenantDto, TenantDtoStatusEnum } from "@/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -45,8 +45,6 @@ export function TenantCard({ tenant }: TenantCardProps) {
     toast.success(`${label} copied to clipboard`);
   };
 
-  const secrets = [{ key: "test", value: "test" }];
-
   return (
     <>
       <Card className="overflow-hidden">
@@ -83,7 +81,7 @@ export function TenantCard({ tenant }: TenantCardProps) {
               </div>
             )}
 
-            {secrets && secrets.length > 0 && (
+            {tenant.secrets && tenant.secrets.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Secrets</span>
@@ -98,7 +96,7 @@ export function TenantCard({ tenant }: TenantCardProps) {
                 </div>
                 {showSecrets && (
                   <div className="space-y-2">
-                    {secrets.map((secret) => (
+                    {tenant.secrets.map((secret) => (
                       <div key={secret.key} className="space-y-1">
                         <div className="text-xs text-muted-foreground">
                           {secret.key}
@@ -136,7 +134,10 @@ export function TenantCard({ tenant }: TenantCardProps) {
               variant="outline"
               size="sm"
               onClick={handleRestart}
-              disabled={deleteTenant.isPending || tenant.status === "pending"}
+              disabled={
+                deleteTenant.isPending ||
+                tenant.status === TenantDtoStatusEnum.Provisioning
+              }
             >
               <RotateCw className="h-3.5 w-3.5 mr-1" />
               Restart

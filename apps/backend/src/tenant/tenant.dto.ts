@@ -18,6 +18,20 @@ export enum TenantStatus {
   DELETING = "deleting",
 }
 
+export class TenantSecretDto {
+  @ApiProperty({
+    description: "The key of the secret",
+    example: "postgres-password",
+  })
+  key: string;
+
+  @ApiProperty({
+    description: "The value of the secret",
+    example: "postgres",
+  })
+  value: string;
+}
+
 export class TenantDto {
   @ApiProperty({
     description: "The ID of the tenant",
@@ -40,7 +54,7 @@ export class TenantDto {
 
   @ApiProperty({
     description: "The access URL of the tenant",
-    example: "https://my-service.kite.com",
+    example: "https://my-service.kite.internal",
     nullable: true,
     type: String,
   })
@@ -59,4 +73,10 @@ export class TenantDto {
     type: Date,
   })
   updatedAt: Date;
+
+  @ApiProperty({
+    description: "The secrets of the tenant",
+    type: [TenantSecretDto],
+  })
+  secrets: TenantSecretDto[];
 }

@@ -9,6 +9,8 @@ const environment = () => ({
   cookieDomain: env.get("COOKIE_DOMAIN").required().asString(),
   frontendUrl: env.get("FRONTEND_URL").required().asString(),
   salt: env.get("SALT").required().asIntPositive(),
+  clusterDomain: env.get("CLUSTER_DOMAIN").required().asString(),
+  clusterUseTLS: env.get("CLUSTER_USE_TLS").required().asBool(),
 });
 
 export default environment;
