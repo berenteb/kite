@@ -1,7 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import crypto from "crypto";
 
 import { ComponentStatus, TenantComponentStatusDto } from "./tenant.dto";
 import {
@@ -9,7 +8,7 @@ import {
   getIngress,
   getNamespace,
   getService,
-  getVolumeClaim,
+  getStatefulSet,
 } from "./tenant.resources";
 
 const MIN_REPLICAS = 1;
@@ -64,112 +63,97 @@ export class KubernetesService implements OnModuleInit {
     },
   ): Promise<void> {
     const namespace = `tenant-${tenantId}`;
-
-    const postgresPvc = getVolumeClaim(tenantId, "postgres");
-    const minioPvc = getVolumeClaim(tenantId, "minio");
-
     const clusterDomain = this.configService.get("clusterDomain");
 
-    // Create PostgreSQL deployment
-    const postgresDeployment = getDeployment(
-      tenantId,
-      "postgres",
-      {
-        name: "postgres",
-        image: "postgres:17",
-        ports: [
-          {
-            containerPort: 5432,
-            name: "postgres",
-          },
-        ],
-        env: [
-          { name: "POSTGRES_PASSWORD", value: config.postgresPassword },
-          { name: "POSTGRES_USER", value: config.postgresUser },
-          { name: "POSTGRES_DB", value: config.postgresDatabase },
-        ],
-        volumeMounts: [
-          {
-            name: "volume",
-            mountPath: "/var/lib/postgresql/data",
-          },
-        ],
-        readinessProbe: {
-          exec: {
-            command: [
-              "pg_isready",
-              "-U",
-              config.postgresUser,
-              "-d",
-              config.postgresDatabase,
-            ],
-          },
-          initialDelaySeconds: 5,
-          periodSeconds: 10,
+    const postgresStatefulSet = getStatefulSet(tenantId, "postgres", {
+      name: "postgres",
+      image: "postgres:17",
+      ports: [
+        {
+          containerPort: 5432,
+          name: "postgres",
         },
-        livenessProbe: {
-          exec: {
-            command: [
-              "pg_isready",
-              "-U",
-              config.postgresUser,
-              "-d",
-              config.postgresDatabase,
-            ],
-          },
-          initialDelaySeconds: 30,
-          periodSeconds: 10,
+      ],
+      env: [
+        { name: "POSTGRES_PASSWORD", value: config.postgresPassword },
+        { name: "POSTGRES_USER", value: config.postgresUser },
+        { name: "POSTGRES_DB", value: config.postgresDatabase },
+      ],
+      volumeMounts: [
+        {
+          name: "data",
+          mountPath: "/var/lib/postgresql/data",
         },
+      ],
+      readinessProbe: {
+        exec: {
+          command: [
+            "pg_isready",
+            "-U",
+            config.postgresUser,
+            "-d",
+            config.postgresDatabase,
+          ],
+        },
+        initialDelaySeconds: 5,
+        periodSeconds: 10,
       },
-      postgresPvc.metadata?.name,
-    );
+      livenessProbe: {
+        exec: {
+          command: [
+            "pg_isready",
+            "-U",
+            config.postgresUser,
+            "-d",
+            config.postgresDatabase,
+          ],
+        },
+        initialDelaySeconds: 30,
+        periodSeconds: 10,
+      },
+    });
 
-    const minioDeployment = getDeployment(
-      tenantId,
-      "minio",
-      {
-        name: "minio",
-        image: "minio/minio:latest",
-        args: ["server", "/data"],
-        env: [
-          { name: "MINIO_ROOT_USER", value: config.minioAccessKey },
-          { name: "MINIO_ROOT_PASSWORD", value: config.minioSecretKey },
-        ],
-        ports: [
-          {
-            containerPort: 9000,
-            name: "minio",
-          },
-          {
-            containerPort: 9001,
-            name: "minio-console",
-          },
-        ],
-        volumeMounts: [
-          {
-            name: "volume",
-            mountPath: "/data",
-          },
-        ],
-        readinessProbe: {
-          httpGet: {
-            path: "/minio/health/ready",
-            port: 9000,
-          },
-          initialDelaySeconds: 5,
-          periodSeconds: 10,
+    const minioStatefulSet = getStatefulSet(tenantId, "minio", {
+      name: "minio",
+      image: "minio/minio:latest",
+      args: ["server", "/data"],
+      env: [
+        { name: "MINIO_ROOT_USER", value: config.minioAccessKey },
+        { name: "MINIO_ROOT_PASSWORD", value: config.minioSecretKey },
+      ],
+      ports: [
+        {
+          containerPort: 9000,
+          name: "minio",
         },
-        livenessProbe: {
-          httpGet: {
-            path: "/minio/health/live",
-            port: 9000,
-          },
-          initialDelaySeconds: 30,
-          periodSeconds: 10,
+        {
+          containerPort: 9001,
+          name: "minio-console",
         },
+      ],
+      volumeMounts: [
+        {
+          name: "data",
+          mountPath: "/data",
+        },
+      ],
+      readinessProbe: {
+        httpGet: {
+          path: "/minio/health/ready",
+          port: 9000,
+        },
+        initialDelaySeconds: 5,
+        periodSeconds: 10,
       },
-      minioPvc.metadata?.name,
-    );
+      livenessProbe: {
+        httpGet: {
+          path: "/minio/health/live",
+          port: 9000,
+        },
+        initialDelaySeconds: 30,
+        periodSeconds: 10,
+      },
+    });
 
     const backendDeployment = getDeployment(tenantId, "backend", {
       name: "backend",
@@ -257,13 +241,11 @@ export class KubernetesService implements OnModuleInit {
       },
     });
 
-    // Create services
     const postgresService = getService(tenantId, "postgres", 5432);
     const minioService = getService(tenantId, "minio", 9000);
     const backendService = getService(tenantId, "backend", 3001);
     const frontendService = getService(tenantId, "frontend", 3000);
 
-    // Create ingress
     const ingress = getIngress("", tenantId, [
       { path: "/", port: 3000, serviceName: "frontend" },
     ]);
@@ -272,24 +254,18 @@ export class KubernetesService implements OnModuleInit {
       { path: "/", port: 9000, serviceName: "minio" },
     ]);
 
-    // Create PVCs
-    const pvcs = [postgresPvc, minioPvc];
-    for (const resource of pvcs) {
-      await this.k8sCoreApi.createNamespacedPersistentVolumeClaim({
+    const statefulSets = [postgresStatefulSet, minioStatefulSet];
+    for (const resource of statefulSets) {
+      await this.k8sApi.createNamespacedStatefulSet({
         body: resource,
         namespace,
       });
 
-      this.logger.log(`Created PVC ${resource.metadata?.name}`);
+      this.logger.log(`Created StatefulSet ${resource.metadata?.name}`);
     }
 
-    // Apply all deployments
-    const deployments = [
-      postgresDeployment,
-      minioDeployment,
-      backendDeployment,
-      frontendDeployment,
-    ];
+    // Create deployments
+    const deployments = [backendDeployment, frontendDeployment];
     for (const resource of deployments) {
       await this.k8sApi.createNamespacedDeployment({
         body: resource,
@@ -353,44 +329,114 @@ export class KubernetesService implements OnModuleInit {
     const namespace = this.getNamespaceName(tenantId);
 
     try {
-      const deployment = await this.k8sApi.readNamespacedDeployment({
-        name: component,
-        namespace,
-      });
-      const status = deployment.status;
+      // Try to get deployment first
+      try {
+        const deployment = await this.k8sApi.readNamespacedDeployment({
+          name: component,
+          namespace,
+        });
+        const status = deployment.status;
 
-      if (!status) {
-        return {
-          name: component,
-          status: ComponentStatus.UNAVAILABLE,
-          message: "No status available",
-        };
-      }
+        if (!status) {
+          return {
+            name: component,
+            status: ComponentStatus.UNAVAILABLE,
+            message: "No status available",
+          };
+        }
 
-      if (this.isPodReady(status)) {
-        return {
-          name: component,
-          status: ComponentStatus.RUNNING,
-          message: null,
-        };
-      } else if (this.isPodError(status)) {
-        return {
-          name: component,
-          status: ComponentStatus.ERROR,
-          message: "Pods are in error state",
-        };
-      } else if (this.isPodPending(status)) {
-        return {
-          name: component,
-          status: ComponentStatus.PENDING,
-          message: `${status.unavailableReplicas} replicas are not yet ready`,
-        };
-      } else if (this.isPodUnhealthy(status)) {
-        return {
-          name: component,
-          status: ComponentStatus.UNHEALTHY,
-          message: "Pods are unhealthy",
-        };
+        if (this.isPodReady(status)) {
+          return {
+            name: component,
+            status: ComponentStatus.RUNNING,
+            message: null,
+          };
+        } else if (this.isPodError(status)) {
+          return {
+            name: component,
+            status: ComponentStatus.ERROR,
+            message: "Pods are in error state",
+          };
+        } else if (this.isPodPending(status)) {
+          return {
+            name: component,
+            status: ComponentStatus.PENDING,
+            message: `${status.unavailableReplicas} replicas are not yet ready`,
+          };
+        } else if (this.isPodUnhealthy(status)) {
+          return {
+            name: component,
+            status: ComponentStatus.UNHEALTHY,
+            message: "Pods are unhealthy",
+          };
+        }
+      } catch (error) {
+        // If deployment not found, try StatefulSet
+        try {
+          const statefulSet = await this.k8sApi.readNamespacedStatefulSet({
+            name: component,
+            namespace,
+          });
+          const status = statefulSet.status;
+
+          if (!status) {
+            return {
+              name: component,
+              status: ComponentStatus.UNAVAILABLE,
+              message: "No status available",
+            };
+          }
+
+          const desiredReplicas = status.replicas ?? 0;
+          const availableReplicas = status.availableReplicas ?? 0;
+          const readyReplicas = status.readyReplicas ?? 0;
+          const currentReplicas = status.currentReplicas ?? 0;
+
+          if (
+            availableReplicas === desiredReplicas &&
+            readyReplicas === desiredReplicas &&
+            currentReplicas === desiredReplicas
+          ) {
+            return {
+              name: component,
+              status: ComponentStatus.RUNNING,
+              message: null,
+            };
+          } else if (status.conditions?.some((c) => c.type === "Failed")) {
+            return {
+              name: component,
+              status: ComponentStatus.ERROR,
+              message: "Pods are in error state",
+            };
+          } else if (
+            availableReplicas < desiredReplicas ||
+            readyReplicas < desiredReplicas ||
+            currentReplicas < desiredReplicas
+          ) {
+            return {
+              name: component,
+              status: ComponentStatus.PENDING,
+              message: `${desiredReplicas - availableReplicas} replicas are not yet ready`,
+            };
+          } else if (
+            status.conditions?.some(
+              (c) => c.type === "Progressing" && c.status === "False",
+            )
+          ) {
+            return {
+              name: component,
+              status: ComponentStatus.UNHEALTHY,
+              message: "Pods are unhealthy",
+            };
+          }
+        } catch (statefulSetError) {
+          // If both deployment and StatefulSet not found, return error
+          return {
+            name: component,
+            status: ComponentStatus.ERROR,
+            message: "Component not found",
+          };
+        }
       }
 
       return {

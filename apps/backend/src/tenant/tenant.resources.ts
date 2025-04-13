@@ -8,28 +8,6 @@ export function getNamespace(tenantId: string): k8s.V1Namespace {
   };
 }
 
-export function getVolumeClaim(
-  tenantId: string,
-  name: string,
-): k8s.V1PersistentVolumeClaim {
-  return {
-    apiVersion: "v1",
-    kind: "PersistentVolumeClaim",
-    metadata: {
-      name: `${name}-pvc-${tenantId}`,
-      namespace: getNamespaceName(tenantId),
-    },
-    spec: {
-      accessModes: ["ReadWriteOnce"],
-      resources: {
-        requests: {
-          storage: "500Mi",
-        },
-      },
-    },
-  };
-}
-
 export function getDeployment(
   tenantId: string,
   name: string,
@@ -129,6 +107,56 @@ export function getIngress(
                 },
               },
             })),
+          },
+        },
+      ],
+    },
+  };
+}
+
+export function getStatefulSet(
+  tenantId: string,
+  name: string,
+  container: k8s.V1Container,
+): k8s.V1StatefulSet {
+  return {
+    apiVersion: "apps/v1",
+    kind: "StatefulSet",
+    metadata: {
+      name: name,
+      namespace: getNamespaceName(tenantId),
+    },
+    spec: {
+      serviceName: name,
+      replicas: 1,
+      selector: {
+        matchLabels: {
+          app: name,
+        },
+      },
+      template: {
+        metadata: {
+          labels: {
+            app: name,
+          },
+        },
+        spec: {
+          containers: [container],
+        },
+      },
+      volumeClaimTemplates: [
+        {
+          metadata: {
+            namespace: getNamespaceName(tenantId),
+            name: "data",
+          },
+          spec: {
+            accessModes: ["ReadWriteOnce"],
+            resources: {
+              requests: {
+                storage: "500Mi",
+              },
+            },
           },
         },
       ],
