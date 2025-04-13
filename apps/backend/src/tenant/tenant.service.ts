@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Tenant } from "@prisma/client";
 import * as crypto from "crypto";
@@ -14,6 +14,8 @@ import {
 
 @Injectable()
 export class TenantService {
+  private readonly logger = new Logger(TenantService.name);
+
   constructor(
     private readonly prismaService: PrismaService,
     private readonly kubernetesService: KubernetesService,
@@ -72,6 +74,7 @@ export class TenantService {
         secrets: this.mapSecrets(tenant),
       };
     } catch (error) {
+      this.logger.error(`Failed to create tenant ${tenant.id}:`, error);
       const updatedTenant = await this.prismaService.tenant.update({
         where: { id: tenant.id },
         data: { status: TenantStatus.ERROR },

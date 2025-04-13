@@ -65,6 +65,8 @@ export class KubernetesService implements OnModuleInit {
     const postgresPvc = getVolumeClaim(tenantId, "postgres");
     const minioPvc = getVolumeClaim(tenantId, "minio");
 
+    const clusterDomain = this.configService.get("clusterDomain");
+
     // Create PostgreSQL deployment
     const postgresDeployment = getDeployment(
       tenantId,
@@ -137,14 +139,24 @@ export class KubernetesService implements OnModuleInit {
       env: [
         { name: "BACKEND_PORT", value: "3001" },
         { name: "JWT_SECRET", value: "sfhaisfogphaishfa" },
-        { name: "COOKIE_DOMAIN", value: "localhost" },
+        { name: "COOKIE_DOMAIN", value: clusterDomain },
         {
           name: "FRONTEND_URL",
-          value: `http://${tenantId}.kite.internal`,
+          value: this.getAccessUrl(tenantId),
         },
         { name: "SALT", value: "5" },
-        { name: "STORAGE_ENDPOINT", value: "minio" },
-        { name: "STORAGE_PORT", value: "9000" },
+        {
+          name: "STORAGE_ENDPOINT",
+          value: "minio",
+        },
+        {
+          name: "STORAGE_PORT",
+          value: "9000",
+        },
+        {
+          name: "STORAGE_PUBLIC_URL",
+          value: `${this.getAccessUrl(tenantId)}/cdn`,
+        },
         { name: "STORAGE_ACCESS_KEY", value: config.minioAccessKey },
         { name: "STORAGE_SECRET_KEY", value: config.minioSecretKey },
         { name: "STORAGE_DEFAULT_BUCKET", value: "default" },
@@ -162,6 +174,10 @@ export class KubernetesService implements OnModuleInit {
       image: "snapster-frontend:latest",
       imagePullPolicy: "Never",
       ports: [{ containerPort: 3000, name: "frontend" }],
+      env: [
+        { name: "BACKEND_HOST", value: "backend:3001" },
+        { name: "CDN_HOST", value: "minio:9000" },
+      ],
     });
 
     // Create services
@@ -171,11 +187,14 @@ export class KubernetesService implements OnModuleInit {
     const frontendService = getService(tenantId, "frontend", 3000);
 
     // Create ingress
-    const ingress = getIngress(tenantId, [
-      { path: "/cdn", port: 9000, serviceName: "minio" },
-      { path: "/api", port: 3001, serviceName: "backend" },
+    const ingress = getIngress("", tenantId, [
       { path: "/", port: 3000, serviceName: "frontend" },
     ]);
+
+    const cdnIngress = getIngress("cdn", tenantId, [
+      { path: "/", port: 9000, serviceName: "minio" },
+    ]);
+
     // Create PVCs
     const pvcs = [postgresPvc, minioPvc];
     for (const resource of pvcs) {
@@ -219,12 +238,15 @@ export class KubernetesService implements OnModuleInit {
       this.logger.log(`Created service ${resource.metadata?.name}`);
     }
 
-    await this.k8sNetworkingApi.createNamespacedIngress({
-      body: ingress,
-      namespace,
-    });
+    const ingresses = [ingress, cdnIngress];
+    for (const resource of ingresses) {
+      await this.k8sNetworkingApi.createNamespacedIngress({
+        body: resource,
+        namespace,
+      });
 
-    this.logger.log(`Created ingress ${ingress.metadata?.name}`);
+      this.logger.log(`Created ingress ${resource.metadata?.name}`);
+    }
   }
 
   async deleteTenant(tenantId: string): Promise<void> {
@@ -238,5 +260,12 @@ export class KubernetesService implements OnModuleInit {
 
   private getNamespaceName(tenantId: string): string {
     return `tenant-${tenantId}`;
+  }
+
+  private getAccessUrl(tenantId: string): string {
+    const useTLS = this.configService.get("clusterUseTLS");
+    const domain = this.configService.get("clusterDomain");
+
+    return `${useTLS ? "https" : "http"}://${tenantId}.${domain}`;
   }
 }

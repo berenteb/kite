@@ -101,6 +101,7 @@ export function getService(
 }
 
 export function getIngress(
+  prefix: string,
   tenantId: string,
   paths: { path: string; port: number; serviceName: string }[],
 ): k8s.V1Ingress {
@@ -108,16 +109,13 @@ export function getIngress(
     apiVersion: "networking.k8s.io/v1",
     kind: "Ingress",
     metadata: {
-      name: `ingress-${tenantId}`,
+      name: `ingress-${prefix}-${tenantId}`,
       namespace: getNamespaceName(tenantId),
-      annotations: {
-        "nginx.ingress.kubernetes.io/rewrite-target": "/",
-      },
     },
     spec: {
       rules: [
         {
-          host: `${tenantId}.kite.internal`,
+          host: `${prefix ? `${prefix}.` : ""}${tenantId}.kite.internal`,
           http: {
             paths: paths.map((path) => ({
               path: path.path,
