@@ -6,30 +6,30 @@ interface StatusBadgeProps {
   className?: string;
 }
 
-export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const statusConfig = {
-    [TenantDtoStatusEnum.Ready]: {
-      bg: "bg-status-active/20",
-      text: "text-status-active",
-      label: "Active",
-    },
-    [TenantDtoStatusEnum.Provisioning]: {
-      bg: "bg-status-pending/20",
-      text: "text-status-pending",
-      label: "Provisioning",
-    },
-    [TenantDtoStatusEnum.Error]: {
-      bg: "bg-status-error/20",
-      text: "text-status-error",
-      label: "Error",
-    },
-    [TenantDtoStatusEnum.Deleting]: {
-      bg: "bg-status-inactive/20",
-      text: "text-status-inactive",
-      label: "Deleting",
-    },
-  };
+const statusConfig = {
+  [TenantDtoStatusEnum.Ready]: {
+    bg: "bg-green-500/20",
+    text: "text-green-500",
+    label: "Active",
+  },
+  [TenantDtoStatusEnum.Provisioning]: {
+    bg: "bg-yellow-500/20",
+    text: "text-yellow-500",
+    label: "Provisioning",
+  },
+  [TenantDtoStatusEnum.Error]: {
+    bg: "bg-red-500/20",
+    text: "text-red-500",
+    label: "Error",
+  },
+  [TenantDtoStatusEnum.Deleting]: {
+    bg: "bg-gray-500/20",
+    text: "text-gray-500",
+    label: "Deleting",
+  },
+};
 
+export function StatusBadge({ status, className }: StatusBadgeProps) {
   const config = statusConfig[status];
 
   if (!config) {
@@ -45,10 +45,6 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         className,
       )}
     >
-      <span
-        className="rounded-full"
-        style={{ backgroundColor: `var(--status-${status})` }}
-      />
       {config.label}
     </div>
   );

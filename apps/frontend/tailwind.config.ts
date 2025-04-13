@@ -63,12 +63,6 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        status: {
-          active: "#10B981",
-          pending: "#F59E0B",
-          error: "#EF4444",
-          inactive: "#6B7280",
-        },
       },
       borderRadius: {
         lg: "var(--radius)",

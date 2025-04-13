@@ -89,6 +89,43 @@ export interface RegisterDto {
 /**
  * 
  * @export
+ * @interface TenantComponentStatusDto
+ */
+export interface TenantComponentStatusDto {
+    /**
+     * The name of the component
+     * @type {string}
+     * @memberof TenantComponentStatusDto
+     */
+    'name': string;
+    /**
+     * The status of the component
+     * @type {string}
+     * @memberof TenantComponentStatusDto
+     */
+    'status': TenantComponentStatusDtoStatusEnum;
+    /**
+     * The message of the component
+     * @type {string}
+     * @memberof TenantComponentStatusDto
+     */
+    'message': string | null;
+}
+
+export const TenantComponentStatusDtoStatusEnum = {
+    Running: 'running',
+    Pending: 'pending',
+    Unhealthy: 'unhealthy',
+    Error: 'error',
+    Unavailable: 'unavailable',
+    Unknown: 'unknown'
+} as const;
+
+export type TenantComponentStatusDtoStatusEnum = typeof TenantComponentStatusDtoStatusEnum[keyof typeof TenantComponentStatusDtoStatusEnum];
+
+/**
+ * 
+ * @export
  * @interface TenantDto
  */
 export interface TenantDto {
@@ -134,6 +171,12 @@ export interface TenantDto {
      * @memberof TenantDto
      */
     'secrets': Array<TenantSecretDto>;
+    /**
+     * The component statuses of the tenant
+     * @type {Array<TenantComponentStatusDto>}
+     * @memberof TenantDto
+     */
+    'componentStatuses': Array<TenantComponentStatusDto>;
 }
 
 export const TenantDtoStatusEnum = {

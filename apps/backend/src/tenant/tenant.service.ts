@@ -7,6 +7,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { KubernetesService } from "./kubernetes.service";
 import {
   CreateTenantDto,
+  TenantComponentStatusDto,
   TenantDto,
   TenantSecretDto,
   TenantStatus,
@@ -72,6 +73,7 @@ export class TenantService {
         createdAt: tenant.createdAt,
         updatedAt: tenant.updatedAt,
         secrets: this.mapSecrets(tenant),
+        componentStatuses: await this.getAllComponentStatuses(tenant),
       };
     } catch (error) {
       this.logger.error(`Failed to create tenant ${tenant.id}:`, error);
@@ -90,6 +92,7 @@ export class TenantService {
         createdAt: updatedTenant.createdAt,
         updatedAt: updatedTenant.updatedAt,
         secrets: this.mapSecrets(updatedTenant),
+        componentStatuses: await this.getAllComponentStatuses(updatedTenant),
       };
     }
   }
@@ -123,18 +126,39 @@ export class TenantService {
       },
     });
 
-    return tenants.map((tenant) => ({
-      id: tenant.id,
-      name: tenant.name,
-      status: tenant.status as TenantStatus,
-      accessUrl:
-        tenant.status === TenantStatus.READY
-          ? this.getAccessUrl(tenant.id)
-          : null,
-      createdAt: tenant.createdAt,
-      updatedAt: tenant.updatedAt,
-      secrets: this.mapSecrets(tenant),
-    }));
+    return await Promise.all(
+      tenants.map(async (tenant) => ({
+        id: tenant.id,
+        name: tenant.name,
+        status: tenant.status as TenantStatus,
+        accessUrl:
+          tenant.status === TenantStatus.READY
+            ? this.getAccessUrl(tenant.id)
+            : null,
+        createdAt: tenant.createdAt,
+        updatedAt: tenant.updatedAt,
+        secrets: this.mapSecrets(tenant),
+        componentStatuses: await this.getAllComponentStatuses(tenant),
+      })),
+    );
+  }
+
+  private async getAllComponentStatuses(
+    tenant: Tenant,
+  ): Promise<TenantComponentStatusDto[]> {
+    return Promise.all([
+      this.getComponentStatus(tenant, "postgres"),
+      this.getComponentStatus(tenant, "minio"),
+      this.getComponentStatus(tenant, "backend"),
+      this.getComponentStatus(tenant, "frontend"),
+    ]);
+  }
+
+  private async getComponentStatus(
+    tenant: Tenant,
+    component: string,
+  ): Promise<TenantComponentStatusDto> {
+    return this.kubernetesService.getComponentStatus(tenant.id, component);
   }
 
   private getAccessUrl(tenantId: string): string {

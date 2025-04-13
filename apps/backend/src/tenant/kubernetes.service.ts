@@ -3,6 +3,7 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import crypto from "crypto";
 
+import { ComponentStatus, TenantComponentStatusDto } from "./tenant.dto";
 import {
   getDeployment,
   getIngress,
@@ -10,6 +11,8 @@ import {
   getService,
   getVolumeClaim,
 } from "./tenant.resources";
+
+const MIN_REPLICAS = 1;
 
 @Injectable()
 export class KubernetesService implements OnModuleInit {
@@ -91,6 +94,32 @@ export class KubernetesService implements OnModuleInit {
             mountPath: "/var/lib/postgresql/data",
           },
         ],
+        readinessProbe: {
+          exec: {
+            command: [
+              "pg_isready",
+              "-U",
+              config.postgresUser,
+              "-d",
+              config.postgresDatabase,
+            ],
+          },
+          initialDelaySeconds: 5,
+          periodSeconds: 10,
+        },
+        livenessProbe: {
+          exec: {
+            command: [
+              "pg_isready",
+              "-U",
+              config.postgresUser,
+              "-d",
+              config.postgresDatabase,
+            ],
+          },
+          initialDelaySeconds: 30,
+          periodSeconds: 10,
+        },
       },
       postgresPvc.metadata?.name,
     );
@@ -122,6 +151,22 @@ export class KubernetesService implements OnModuleInit {
             mountPath: "/data",
           },
         ],
+        readinessProbe: {
+          httpGet: {
+            path: "/minio/health/ready",
+            port: 9000,
+          },
+          initialDelaySeconds: 5,
+          periodSeconds: 10,
+        },
+        livenessProbe: {
+          httpGet: {
+            path: "/minio/health/live",
+            port: 9000,
+          },
+          initialDelaySeconds: 30,
+          periodSeconds: 10,
+        },
       },
       minioPvc.metadata?.name,
     );
@@ -167,6 +212,22 @@ export class KubernetesService implements OnModuleInit {
           value: `postgresql://tenant:${config.postgresPassword}@postgres:5432/tenantdb`,
         },
       ],
+      readinessProbe: {
+        httpGet: {
+          path: "/health",
+          port: 3001,
+        },
+        initialDelaySeconds: 5,
+        periodSeconds: 10,
+      },
+      livenessProbe: {
+        httpGet: {
+          path: "/health",
+          port: 3001,
+        },
+        initialDelaySeconds: 30,
+        periodSeconds: 10,
+      },
     });
 
     const frontendDeployment = getDeployment(tenantId, "frontend", {
@@ -178,6 +239,22 @@ export class KubernetesService implements OnModuleInit {
         { name: "BACKEND_HOST", value: "backend:3001" },
         { name: "CDN_HOST", value: "minio:9000" },
       ],
+      readinessProbe: {
+        httpGet: {
+          path: "/",
+          port: 3000,
+        },
+        initialDelaySeconds: 5,
+        periodSeconds: 10,
+      },
+      livenessProbe: {
+        httpGet: {
+          path: "/",
+          port: 3000,
+        },
+        initialDelaySeconds: 30,
+        periodSeconds: 10,
+      },
     });
 
     // Create services
@@ -267,5 +344,127 @@ export class KubernetesService implements OnModuleInit {
     const domain = this.configService.get("clusterDomain");
 
     return `${useTLS ? "https" : "http"}://${tenantId}.${domain}`;
+  }
+
+  async getComponentStatus(
+    tenantId: string,
+    component: string,
+  ): Promise<TenantComponentStatusDto> {
+    const namespace = this.getNamespaceName(tenantId);
+
+    try {
+      const deployment = await this.k8sApi.readNamespacedDeployment({
+        name: component,
+        namespace,
+      });
+      const status = deployment.status;
+
+      if (!status) {
+        return {
+          name: component,
+          status: ComponentStatus.UNAVAILABLE,
+          message: "No status available",
+        };
+      }
+
+      if (this.isPodReady(status)) {
+        return {
+          name: component,
+          status: ComponentStatus.RUNNING,
+          message: null,
+        };
+      } else if (this.isPodError(status)) {
+        return {
+          name: component,
+          status: ComponentStatus.ERROR,
+          message: "Pods are in error state",
+        };
+      } else if (this.isPodPending(status)) {
+        return {
+          name: component,
+          status: ComponentStatus.PENDING,
+          message: `${status.unavailableReplicas} replicas are not yet ready`,
+        };
+      } else if (this.isPodUnhealthy(status)) {
+        return {
+          name: component,
+          status: ComponentStatus.UNHEALTHY,
+          message: "Pods are unhealthy",
+        };
+      }
+
+      return {
+        name: component,
+        status: ComponentStatus.UNKNOWN,
+        message: "Unknown status",
+      };
+    } catch (error) {
+      return {
+        name: component,
+        status: ComponentStatus.ERROR,
+        message: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  private isPodReady(status: k8s.V1DeploymentStatus): boolean {
+    const desiredReplicas = status.replicas ?? 0;
+    const availableReplicas = status.availableReplicas ?? 0;
+    const updatedReplicas = status.updatedReplicas ?? 0;
+    const readyReplicas = status.readyReplicas ?? 0;
+    const unavailableReplicas = status.unavailableReplicas ?? 0;
+
+    return (
+      availableReplicas === desiredReplicas &&
+      updatedReplicas === desiredReplicas &&
+      readyReplicas === desiredReplicas &&
+      unavailableReplicas === 0
+    );
+  }
+
+  private isPodUnhealthy(status: k8s.V1DeploymentStatus): boolean {
+    const unavailableReplicas = status.unavailableReplicas ?? 0;
+    const updatedReplicas = status.updatedReplicas ?? 0;
+    const replicas = status.replicas ?? 0;
+    const readyReplicas = status.readyReplicas ?? 0;
+
+    return (
+      unavailableReplicas > 0 ||
+      updatedReplicas < replicas ||
+      readyReplicas < replicas
+    );
+  }
+
+  private isPodPending(status: k8s.V1DeploymentStatus): boolean {
+    const desiredReplicas = status.replicas ?? 0;
+    const availableReplicas = status.availableReplicas ?? 0;
+    const updatedReplicas = status.updatedReplicas ?? 0;
+    const readyReplicas = status.readyReplicas ?? 0;
+    const conditions = status.conditions ?? [];
+
+    // Check if deployment is progressing but not yet ready
+    const isProgressing = conditions.some(
+      (condition) =>
+        condition.type === "Progressing" &&
+        condition.status === "True" &&
+        (condition.reason === "NewReplicaSetAvailable" ||
+          condition.reason === "ReplicaSetUpdated"),
+    );
+
+    // Pod is pending if it's progressing or if replicas are being updated but not all are ready yet
+    return (
+      isProgressing ||
+      (updatedReplicas > 0 && updatedReplicas < desiredReplicas) ||
+      (readyReplicas < desiredReplicas && availableReplicas < desiredReplicas)
+    );
+  }
+
+  private isPodError(status: k8s.V1DeploymentStatus): boolean {
+    const collisionCount = status.collisionCount ?? 0;
+    const conditions = status.conditions ?? [];
+    return (
+      collisionCount > 0 ||
+      conditions.some((condition) => condition.type === "Failed")
+    );
   }
 }

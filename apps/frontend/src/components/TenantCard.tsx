@@ -24,6 +24,8 @@ import {
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useDeleteTenant } from "@/hooks/use-tenant";
 
+import { TenantComponentListItem } from "./TenantComponentListItem";
+
 interface TenantCardProps {
   tenant: TenantDto;
 }
@@ -59,75 +61,83 @@ export function TenantCard({ tenant }: TenantCardProps) {
             <StatusBadge status={tenant.status} />
           </div>
         </CardHeader>
-        <CardContent className="pb-2">
-          <div className="space-y-4">
-            {tenant.accessUrl && (
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Access URL</div>
-                <div className="flex items-center space-x-2">
-                  <code className="bg-secondary p-1.5 px-2 rounded text-xs flex-1 overflow-hidden overflow-ellipsis">
-                    {tenant.accessUrl}
-                  </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => window.open(tenant.accessUrl, "_blank")}
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    <span className="sr-only">Open</span>
-                  </Button>
-                </div>
+        <CardContent className="pb-2 space-y-4">
+          {tenant.accessUrl && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Access URL</div>
+              <div className="flex items-center space-x-2">
+                <code className="bg-secondary p-1.5 px-2 rounded text-xs flex-1 overflow-hidden overflow-ellipsis">
+                  {tenant.accessUrl}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => window.open(tenant.accessUrl, "_blank")}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span className="sr-only">Open</span>
+                </Button>
               </div>
-            )}
+            </div>
+          )}
 
-            {tenant.secrets && tenant.secrets.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Secrets</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-xs"
-                    onClick={() => setShowSecrets(!showSecrets)}
-                  >
-                    {showSecrets ? "Hide" : "Show"}
-                  </Button>
-                </div>
-                {showSecrets && (
-                  <div className="space-y-2">
-                    {tenant.secrets.map((secret) => (
-                      <div key={secret.key} className="space-y-1">
-                        <div className="text-xs text-muted-foreground">
-                          {secret.key}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <code className="bg-secondary p-1.5 px-2 rounded text-xs flex-1 overflow-hidden overflow-ellipsis">
-                            {secret.value}
-                          </code>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 w-7 p-0"
-                            onClick={() =>
-                              copyToClipboard(secret.value, secret.key)
-                            }
-                          >
-                            <CopyIcon />
-                            <span className="sr-only">Copy</span>
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+          {tenant.secrets && tenant.secrets.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Secrets</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  onClick={() => setShowSecrets(!showSecrets)}
+                >
+                  {showSecrets ? "Hide" : "Show"}
+                </Button>
               </div>
-            )}
-          </div>
+              {showSecrets && (
+                <div className="space-y-2">
+                  {tenant.secrets.map((secret) => (
+                    <div key={secret.key} className="space-y-1">
+                      <div className="text-xs text-muted-foreground">
+                        {secret.key}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <code className="bg-secondary p-1.5 px-2 rounded text-xs flex-1 overflow-hidden overflow-ellipsis">
+                          {secret.value}
+                        </code>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() =>
+                            copyToClipboard(secret.value, secret.key)
+                          }
+                        >
+                          <CopyIcon />
+                          <span className="sr-only">Copy</span>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {tenant.componentStatuses.length > 0 && (
+            <div className="space-y-2 border-t border-gray-700 pt-4">
+              {tenant.componentStatuses.map((component) => (
+                <TenantComponentListItem
+                  key={component.name}
+                  component={component}
+                />
+              ))}
+            </div>
+          )}
         </CardContent>
         <CardFooter className="flex justify-between pt-2">
           <div className="text-xs text-muted-foreground">
-            Created {formatDistanceToNow(new Date())} ago
+            Created {formatDistanceToNow(new Date(tenant.createdAt))} ago
           </div>
           <div className="flex space-x-2">
             <Button

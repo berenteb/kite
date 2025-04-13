@@ -32,6 +32,37 @@ export class TenantSecretDto {
   value: string;
 }
 
+export enum ComponentStatus {
+  RUNNING = "running",
+  PENDING = "pending",
+  UNHEALTHY = "unhealthy",
+  ERROR = "error",
+  UNAVAILABLE = "unavailable",
+  UNKNOWN = "unknown",
+}
+export class TenantComponentStatusDto {
+  @ApiProperty({
+    description: "The name of the component",
+    example: "postgres",
+  })
+  name: string;
+
+  @ApiProperty({
+    description: "The status of the component",
+    example: "running",
+    enum: ComponentStatus,
+  })
+  status: ComponentStatus;
+
+  @ApiProperty({
+    description: "The message of the component",
+    example: "The component is running",
+    nullable: true,
+    type: String,
+  })
+  message: string | null;
+}
+
 export class TenantDto {
   @ApiProperty({
     description: "The ID of the tenant",
@@ -79,4 +110,11 @@ export class TenantDto {
     type: [TenantSecretDto],
   })
   secrets: TenantSecretDto[];
+
+  @ApiProperty({
+    description: "The component statuses of the tenant",
+    type: TenantComponentStatusDto,
+    isArray: true,
+  })
+  componentStatuses: TenantComponentStatusDto[];
 }
