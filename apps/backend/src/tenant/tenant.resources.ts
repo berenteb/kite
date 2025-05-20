@@ -81,6 +81,7 @@ export function getService(
 export function getIngress(
   prefix: string,
   tenantId: string,
+  host: string,
   paths: { path: string; port: number; serviceName: string }[],
 ): k8s.V1Ingress {
   return {
@@ -93,7 +94,7 @@ export function getIngress(
     spec: {
       rules: [
         {
-          host: `${prefix ? `${prefix}.` : ""}${tenantId}.kite.internal`,
+          host: `${prefix ? `${prefix}.` : ""}${tenantId}.${host}`,
           http: {
             paths: paths.map((path) => ({
               path: path.path,

@@ -246,11 +246,13 @@ export class KubernetesService implements OnModuleInit {
     const backendService = getService(tenantId, "backend", 3001);
     const frontendService = getService(tenantId, "frontend", 3000);
 
-    const ingress = getIngress("", tenantId, [
+    const host = this.configService.get("clusterDomain");
+
+    const ingress = getIngress("", tenantId, host, [
       { path: "/", port: 3000, serviceName: "frontend" },
     ]);
 
-    const cdnIngress = getIngress("cdn", tenantId, [
+    const cdnIngress = getIngress("cdn", tenantId, host, [
       { path: "/", port: 9000, serviceName: "minio" },
     ]);
 
