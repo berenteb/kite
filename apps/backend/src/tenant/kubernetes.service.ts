@@ -78,6 +78,7 @@ export class KubernetesService implements OnModuleInit {
         { name: "POSTGRES_PASSWORD", value: config.postgresPassword },
         { name: "POSTGRES_USER", value: config.postgresUser },
         { name: "POSTGRES_DB", value: config.postgresDatabase },
+        { name: "POSTGRES_MAX_CONNECTIONS", value: "50" },
       ],
       volumeMounts: [
         {
@@ -85,6 +86,16 @@ export class KubernetesService implements OnModuleInit {
           mountPath: "/var/lib/postgresql/data",
         },
       ],
+      resources: {
+        requests: {
+          cpu: "250m",
+          memory: "256Mi",
+        },
+        limits: {
+          cpu: "500m",
+          memory: "512Mi",
+        },
+      },
       readinessProbe: {
         exec: {
           command: [
@@ -145,6 +156,16 @@ export class KubernetesService implements OnModuleInit {
         initialDelaySeconds: 5,
         periodSeconds: 10,
       },
+      resources: {
+        requests: {
+          cpu: "100m",
+          memory: "128Mi",
+        },
+        limits: {
+          cpu: "500m",
+          memory: "512Mi",
+        },
+      },
       livenessProbe: {
         httpGet: {
           path: "/minio/health/live",
@@ -165,6 +186,16 @@ export class KubernetesService implements OnModuleInit {
           name: "backend",
         },
       ],
+      resources: {
+        requests: {
+          cpu: "500m",
+          memory: "512Mi",
+        },
+        limits: {
+          cpu: "1",
+          memory: "1Gi",
+        },
+      },
       env: [
         { name: "BACKEND_PORT", value: "3001" },
         { name: "JWT_SECRET", value: "sfhaisfogphaishfa" },
@@ -193,7 +224,7 @@ export class KubernetesService implements OnModuleInit {
         { name: "UPLOAD_MAX_FILE_SIZE", value: "5248000" },
         {
           name: "DATABASE_URL",
-          value: `postgresql://tenant:${config.postgresPassword}@postgres:5432/tenantdb`,
+          value: `postgresql://tenant:${config.postgresPassword}@postgres:5432/tenantdb?connection_limit=20&pool_timeout=10`,
         },
       ],
       readinessProbe: {
@@ -223,6 +254,16 @@ export class KubernetesService implements OnModuleInit {
         { name: "BACKEND_HOST", value: "backend:3001" },
         { name: "CDN_HOST", value: "minio:9000" },
       ],
+      resources: {
+        requests: {
+          cpu: "100m",
+          memory: "128Mi",
+        },
+        limits: {
+          cpu: "500m",
+          memory: "512Mi",
+        },
+      },
       readinessProbe: {
         httpGet: {
           path: "/",

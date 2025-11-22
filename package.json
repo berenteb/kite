@@ -14,7 +14,9 @@
     "build:backend": "yarn workspace @kite/backend build",
     "start:backend:prod": "yarn workspace @kite/backend start:prod",
     "generate-api": "openapi-generator-cli generate -i http://localhost:3001/api-json -g typescript-axios -o apps/frontend/src/api",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "benchmark:full": "cd apps/benchmarks && ./scripts/run-full-suite.sh",
+    "benchmark:check": "cd apps/benchmarks && ./scripts/check-prerequisites.sh"
   },
   "workspaces": [
     "apps/*"

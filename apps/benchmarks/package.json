@@ -1,0 +1,26 @@
+{
+  "name": "@kite/benchmarks",
+  "version": "0.0.1",
+  "description": "Performance benchmarks and stress tests for multi-tenant isolation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:baseline": "k6 run k6/baseline-load.js",
+    "test:noisy-neighbor": "k6 run k6/noisy-neighbor.js",
+    "test:resource-limits": "k6 run k6/resource-limits.js",
+    "test:pool-exhaustion": "k6 run k6/pool-exhaustion.js",
+    "stress:cpu": "node stress/cpu-stress.js",
+    "stress:io": "node stress/io-stress.js",
+    "monitor:start": "node monitoring/collect-metrics.js",
+    "analyze:results": "node analysis/analyze-results.js",
+    "full-suite": "./scripts/run-full-suite.sh"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  }
+}
+
