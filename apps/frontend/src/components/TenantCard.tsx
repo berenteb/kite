@@ -125,7 +125,7 @@ export function TenantCard({ tenant }: TenantCardProps) {
             </div>
           )}
           {tenant.componentStatuses.length > 0 && (
-            <div className="space-y-2 border-t border-gray-700 pt-4">
+            <div className="space-y-2 border-t dark:border-gray-700 border-gray-300 pt-4">
               {tenant.componentStatuses.map((component) => (
                 <TenantComponentListItem
                   key={component.name}

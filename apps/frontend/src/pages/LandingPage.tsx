@@ -1,6 +1,7 @@
 import { CircleCheckIcon, LockIcon, RocketIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -15,7 +16,8 @@ export default function LandingPage() {
             KITE - Kubernetes Isolated Tenant Environments
           </h1>
         </div>
-        <div className="space-x-4">
+        <div className="flex items-center space-x-4">
+          <ThemeToggle />
           {isAuthenticated ? (
             <Button asChild>
               <Link to="/dashboard">Dashboard</Link>

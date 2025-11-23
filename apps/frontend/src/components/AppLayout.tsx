@@ -4,6 +4,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 
+import { ThemeToggle } from "./theme-toggle";
 import { LoadingSpinner } from "./ui/loading-spinner";
 
 export function AppLayout() {
@@ -32,6 +33,7 @@ export function AppLayout() {
           </div>
           <div className="flex items-center space-x-4">
             <div className="text-sm text-muted-foreground">{user?.email}</div>
+            <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={logout}>
               Logout
             </Button>
